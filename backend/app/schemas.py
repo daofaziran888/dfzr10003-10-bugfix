@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 T = TypeVar("T")
 
@@ -22,10 +22,26 @@ class ActionResult(BaseModel):
 
 
 class EntryPayload(BaseModel):
-    """登记或修改一条业务记录时提交的字段集合。"""
+    """登记或修改一条业务记录时提交的字段集合。
+
+    前端动作按钮直接提交 `{"action": "启动重跑", "中断日期": "..."}`；
+    顶层除 action/values/remark 之外的字段也并入 values，避免执行参数被静默丢弃。
+    """
 
     values: dict[str, Any] = Field(default_factory=dict)
+    action: str | None = None
     remark: str | None = None
+    model_config = ConfigDict(extra="allow")
+
+    def action_values(self) -> dict[str, Any]:
+        action = (self.action or self.values.get("action") or "").strip()
+        merged = dict(self.values)
+        merged.pop("action", None)
+        for key, value in (self.model_extra or {}).items():
+            if key not in {"action", "values", "remark"} and key not in merged:
+                merged[key] = value
+        merged["action"] = action
+        return merged
 
 
 

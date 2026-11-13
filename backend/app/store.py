@@ -8,15 +8,28 @@ from typing import Any
 
 from app.seed import SEED_ROWS
 
+# 内部账本（执行记录、调度待办）不属于业务模块，不参与概览与模块统计。
+INTERNAL_TABLES = {"backfill_runs", "etl_executions", "scheduling_todos"}
+
 
 class Store:
     def __init__(self) -> None:
         self._tables: dict[str, list[dict[str, Any]]] = {
             name: [dict(row) for row in rows] for name, rows in SEED_ROWS.items()
         }
+        # 全局单调递增的执行记录序号：重跑批次与调度任务共用同一序列，
+        # 依赖结果冲突时按“最近一次已持久化执行记录”裁决，序号保证不会出现同刻歧义。
+        self._sequence = max(
+            (int(row.get("seq", 0)) for rows in self._tables.values() for row in rows),
+            default=0,
+        )
+
+    def next_sequence(self) -> int:
+        self._sequence += 1
+        return self._sequence
 
     def module_names(self) -> list[str]:
-        return sorted(self._tables)
+        return sorted(name for name in self._tables if name not in INTERNAL_TABLES)
 
     def rows(self, module: str) -> list[dict[str, Any]]:
         return self._tables.setdefault(module, [])
